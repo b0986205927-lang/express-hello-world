@@ -1,10 +1,13 @@
-{"name":"express-hello-world",
-"version":"1.0.0",
-"main":"app.js",
-"scripts":{
-"start":"node app.js"
-},
-"dependencies":{
-"express":"4.18.2"
-}
+{
+  "name": "express-hello-world",
+  "version": "1.0.0",
+  "description": "LINE Bot Server",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js"
+  },
+  "dependencies": {
+    "@line/bot-sdk": "^7.5.0",
+    "express": "^4.18.2"
+  }
 }
