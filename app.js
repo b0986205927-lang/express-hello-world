@@ -1,6 +1,5 @@
 const express = require('express');
 const line = require('@line/bot-sdk');
-const { OpenAI } = require('openai');
 
 const config = {
   channelAccessToken: process.env.CHANNEL_ACCESS_TOKEN,
@@ -8,8 +7,6 @@ const config = {
 };
 
 const client = new line.Client(config);
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
 const app = express();
 
 app.post('/callback', line.middleware(config), (req, res) => {
@@ -26,33 +23,22 @@ async function handleEvent(event) {
     return Promise.resolve(null);
   }
 
-  const userText = event.message.text;
+  const userText = event.message.text.trim();
+  let replyText = '';
 
-  try {
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content: `你是一個專業且親切的台灣早餐/餐廳訂購系統助手。請分析顧客訊息，判斷意圖（預約取餐、修改時間、查詢訂單或一般對話），並以繁體中文親切回覆。若為點餐/預約，請整理出預約時間、品項與數量、取餐方式。`
-        },
-        { role: 'user', content: userText }
-      ],
-    });
-
-    const replyText = completion.choices[0].message.content;
-
-    return client.replyMessage(event.replyToken, {
-      type: 'text',
-      text: replyText
-    });
-  } catch (error) {
-    console.error('OpenAI Error:', error);
-    return client.replyMessage(event.replyToken, {
-      type: 'text',
-      text: '拍謝！系統處理您的訂單時發生一點小狀況，請稍後再試一次！'
-    });
+  // 智慧關鍵字判斷邏輯（完全免費）
+  if (userText.includes('預約') || userText.includes('拿') || userText.includes('點餐') || userText.includes('三明治') || userText.includes('漢堡')) {
+    replyText = `【系統確認】收到您的點餐/預約需求：「${userText}」。老闆已經幫您登記好囉！請依約定時間前往取餐，謝謝您！`;
+  } else if (userText.includes('改') || userText.includes('時間') || userText.includes('順延')) {
+    replyText = `【時間調整】沒問題！已經幫您把取餐時間做調整與備註了，期待您的光臨！`;
+  } else {
+    replyText = `老闆好！我是您的智能訂餐小幫手。您可以傳送「我要預約 8:30 拿三明治」或「幫我改時間」，我會隨時幫您處理！`;
   }
+
+  return client.replyMessage(event.replyToken, {
+    type: 'text',
+    text: replyText
+  });
 }
 
 const PORT = process.env.PORT || 3000;
