@@ -1,5 +1,4 @@
 const express = require('express');
-const crypto = require('crypto');
 const axios = require('axios');
 
 const app = express();
@@ -10,85 +9,130 @@ app.use(express.json({
   }
 }));
 
-// 動態資料庫：可由店家的控制後台隨時切換 isBusy 狀態
+// 動態資料庫與店家狀態
 const db = {
   stores: {
     'store_megawind': { 
       name: '麥味登', 
       balance: 500, 
-      isBusy: false // 預設為「不忙碌」（正常接單），只有當真的爆單時才設為 true
+      isBusy: false,
+      orders: [] // 用來儲存店家收到的真實預約單
     },
     'store_superman': { 
       name: '美而美 (12公尺旁)', 
       balance: 300, 
-      isBusy: false 
+      isBusy: false,
+      orders: []
     }
   }
 };
 
 app.get('/', (req, res) => {
-  res.send('Smart F&B Dispatch Bot is running with dynamic capacity!');
+  res.send('Smart F&B Dispatch Bot with OpenAI is running!');
 });
 
-// LINE Webhook 接收端點
 app.post('/webhook', async (req, res) => {
   res.status(200).send('OK');
 
   const events = req.body.events;
   for (const event of events) {
     if (event.type === 'message' && event.message.type === 'text') {
-      await handleIncomingMessage(event);
+      await handleIncomingMessageWithAI(event);
     }
   }
 });
 
-// 動態智慧調度與產能判斷核心
-async function handleIncomingMessage(event) {
+// 核心：結合 OpenAI 語意解析與智慧排程
+async function handleIncomingMessageWithAI(event) {
   const userMessage = event.message.text.trim();
   const replyToken = event.replyToken;
   let replyText = '';
 
   const targetStore = db.stores['store_megawind'];
 
-  // 測試用小工具指令：讓你可以隨時在 LINE 打「模擬爆單」來切換麥味登狀態
+  // 系統管理指令（測試用）
   if (userMessage === '模擬爆單') {
     targetStore.isBusy = true;
-    replyText = `【系統管理】已強制將麥味登狀態切換為：【忙碌中 (Busy)】。現在客人點餐將會觸發 A/B 分流！`;
-  } 
-  else if (userMessage === '解除爆單') {
+    return await sendLineReply(replyToken, `【系統管理】已將麥味登切換為：【忙碌中】。`);
+  } else if (userMessage === '解除爆單') {
     targetStore.isBusy = false;
-    replyText = `【系統管理】已將麥味登狀態恢復為：【正常營業】。`;
+    return await sendLineReply(replyToken, `【系統管理】已將麥味登恢復為：【正常營業】。`);
+  } else if (userMessage === '查看店家訂單') {
+    const orderList = targetStore.orders.length > 0 
+      ? targetStore.orders.map((o, idx) => `${idx+1}. 時間: ${o.time} | 內容: ${o.content}`).join('\n')
+      : `目前沒有新訂單。`;
+    return await sendLineReply(replyToken, `【店家後台通知面板】\n麥味登收到的預約清單：\n${orderList}`);
   }
-  // 正常點餐流程
-  else if (userMessage.includes('我要點餐') || userMessage.includes('麥味登')) {
-    
-    // 檢查是不是真的處於忙碌狀態
-    if (targetStore.isBusy) {
-      // 真的忙碌時，才啟動 A/B 智慧分流
-      replyText = `【智慧分流通知】\n目前麥味登現場訂單滿載（尖峰忙碌中）。\n\n` +
-                  `為讓您準時取餐，提供您以下方案：\n` +
-                  `【方案 A】麥味登於 08:17 為您製作完成。\n` +
-                  `【方案 B】位於 12 公尺旁的美而美可於 07:40 準時為您做好！\n\n` +
-                  `回覆「選擇A」或「選擇B」以確認訂單與扣除 50% 訂金。`;
-    } else {
-      // 不忙碌時，正常順暢接單！
-      replyText = `【麥味登】點餐成功！\n目前店內產能充足，您的餐點已為您排入 07:40 的製作排程，期待您的蒞臨！`;
-    }
-  } 
-  // 選擇方案 B（跨店分流與金流轉移）
-  else if (userMessage.includes('選擇B')) {
-    const depositAmount = 50; 
-    db.stores['store_megawind'].balance -= depositAmount;
-    db.stores['store_superman'].balance += depositAmount;
 
-    replyText = `【分流成功】\n已為您切換至美而美（12公尺旁），預定 07:40 取餐。\n` +
-                `50% 訂金已自動從麥味登轉入美而美帳戶！`;
-  }
-  else {
-    replyText = `您說的是：「${userMessage}」\n(提示：傳送「我要點餐」測試正常接單；傳送「模擬爆單」可測試 A/B 分流機制)`;
+  // 呼叫 OpenAI API 讓 AI 判斷客人的意圖與預約時間
+  try {
+    const aiAnalysis = await parseUserIntentWithOpenAI(userMessage);
+    
+    // 如果 AI 判斷這是一則「點餐或預約」的訊息
+    if (aiAnalysis.isOrderOrBooking) {
+      const bookedTime = aiAnalysis.time || '未指定時間';
+
+      if (targetStore.isBusy) {
+        // 麥味登忙碌中 -> 啟動 A/B 分流
+        replyText = `【智慧分流通知】\n目前麥味登現場訂單滿載（尖峰忙碌中）。\n\n` +
+                    `您希望預約 ${bookedTime} 取餐，為您提供以下方案：\n` +
+                    `【方案 A】麥味登於 08:17 為您製作完成。\n` +
+                    `【方案 B】位於 12 公尺旁的美而美可於 ${bookedTime} 準時為您做好！\n\n` +
+                    `回覆「選擇A」或「選擇B」以確認訂單與扣除 50% 訂金。`;
+      } else {
+        // 麥味登不忙碌 -> 成功接單，並寫入店家後台！
+        targetStore.orders.push({ time: bookedTime, content: userMessage, timestamp: new Date() });
+        
+        replyText = `【麥味登】預約成功！🎉\n` +
+                    `已為您排入 ${bookedTime} 的製作排程。\n` +
+                    `✅ **店家已即時收到您的預約通知**，請準時蒞臨取餐！`;
+      }
+    } else {
+      // 如果不是點餐，就讓 AI 自由對話回覆
+      replyText = aiAnalysis.reply || `您說的是：「${userMessage}」`;
+    }
+  } catch (error) {
+    console.error('AI Processing Error:', error);
+    replyText = `系統接收到您的訊息：「${userMessage}」，排程系統處理中！`;
   }
 
   await sendLineReply(replyToken, replyText);
+}
+
+// 呼叫 OpenAI 進行智慧語意解析
+async function parseUserIntentWithOpenAI(message) {
+  // 如果你有設定 OPENAI_API_KEY 環境變數，這裡就會真正呼叫 ChatGPT
+  if (!process.env.OPENAI_API_KEY) {
+    // 簡易防呆模擬（如果還沒填 Key 的備用方案）
+    if (message.includes('預約') || message.includes('拿') || message.includes('點')) {
+      return { isOrderOrBooking: true, time: '08:30' };
+    }
+    return { isOrderOrBooking: false, reply: `收到您的訊息：${message}` };
+  }
+
+  const response = await axios.post('https://api.openai.com/v1/chat/completions', {
+    model: 'gpt-4o-mini',
+    messages: [
+      {
+        role: 'system',
+        content: `你是一個智慧餐飲助理。請分析使用者的訊息，並回傳純 JSON 格式（不要包在 markdown 裡面）：
+        {
+          "isOrderOrBooking": true/false, // 是否為點餐或預約取餐
+          "time": "抓取到的時間，例如 08:30 (若無則填 null)",
+          "reply": "如果不是點餐，請用親切的口吻回覆使用者"
+        }`
+      },
+      { role: 'user', content: message }
+    ],
+    response_format: { type: "json_object" }
+  }, {
+    headers: {
+      'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+      'Content-Type': 'application/json'
+    }
+  });
+
+  return JSON.parse(response.data.choices[0].message.content);
 }
 
 async function sendLineReply(replyToken, text) {
