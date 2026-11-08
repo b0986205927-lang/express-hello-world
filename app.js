@@ -29,15 +29,12 @@ async function handleEvent(event) {
   const userText = event.message.text;
 
   try {
-    // 呼叫 OpenAI API 解析意圖與餐點
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
         {
           role: 'system',
-          content: `你是一個專業且親切的台灣早餐/餐廳訂購系統助手。
-請分析顧客訊息，判斷意圖（預約取餐、修改時間、查詢訂單或一般對話），並以繁體中文親切回覆。
-若為點餐/預約，請整理出：1. 預約時間 2. 訂購品項與數量 3. 取餐方式。`
+          content: `你是一個專業且親切的台灣早餐/餐廳訂購系統助手。請分析顧客訊息，判斷意圖（預約取餐、修改時間、查詢訂單或一般對話），並以繁體中文親切回覆。若為點餐/預約，請整理出預約時間、品項與數量、取餐方式。`
         },
         { role: 'user', content: userText }
       ],
@@ -53,7 +50,7 @@ async function handleEvent(event) {
     console.error('OpenAI Error:', error);
     return client.replyMessage(event.replyToken, {
       type: 'text',
-      text: '拍謝！系統處理您的訂單時發生一點小狀況，請稍後再試一次或直接聯繫店家！'
+      text: '拍謝！系統處理您的訂單時發生一點小狀況，請稍後再試一次！'
     });
   }
 }
