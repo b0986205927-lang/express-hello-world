@@ -1,4 +1,4 @@
-{
+O{
   "name": "express-hello-world",
   "version": "1.0.0",
   "main": "app.js",
@@ -7,6 +7,7 @@
   },
   "dependencies": {
     "express": "^4.19.2",
-    "@line/bot-sdk": "^7.5.0"
+    "@line/bot-sdk": "^7.5.0",
+    "openai": "^4.0.0"
   }
 }
