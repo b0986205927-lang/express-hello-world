@@ -9,10 +9,9 @@ const config = {
 const client = new line.Client(config);
 const app = express();
 
-// 老闆接收訂單的 LINE User ID（測試階段可先填你自己的 LINE User ID，留空則只回覆點餐者）
 const OWNER_USER_ID = process.env.OWNER_USER_ID || '';
 
-// 1. 菜單表 (Menu) 範例資料
+// 1. 菜單表 (Menu)
 const menuDB = [
   { item_id: 'B01', category: '主食便當區', name: '招牌排骨飯', price: 110, is_sold_out: false, need_drink_options: false },
   { item_id: 'B02', category: '主食便當區', name: '香酥雞腿飯', price: 120, is_sold_out: false, need_drink_options: false },
@@ -22,7 +21,7 @@ const menuDB = [
 ];
 
 // 2. 購物車暫存表 (Cart) & 3. 正式訂單紀錄表 (Orders)
-const cartDB = new Map(); // key: userId, value: Array<{ item_id, name, price, qty, options }>
+const cartDB = new Map();
 const ordersDB = [];
 
 app.post('/callback', line.middleware(config), (req, res) => {
@@ -35,7 +34,6 @@ app.post('/callback', line.middleware(config), (req, res) => {
 });
 
 async function handleEvent(event) {
-  // 處理按鈕 Postback 事件
   if (event.type === 'postback') {
     const userId = event.source.userId;
     const params = new URLSearchParams(event.postback.data);
@@ -47,12 +45,9 @@ async function handleEvent(event) {
       if (!item) {
         return client.replyMessage(event.replyToken, { type: 'text', text: '不好意思，這道餐點剛售完囉！' });
       }
-
-      // 飲料先跳出冰塊選擇
       if (item.need_drink_options) {
         return sendDrinkIceFlex(event.replyToken, item.item_id, item.name);
       }
-
       addToCart(userId, item, '');
       return sendCartPromptFlex(event.replyToken, userId, `已加入「${item.name}」`);
     }
@@ -93,7 +88,6 @@ async function handleEvent(event) {
     }
   }
 
-  // 處理文字訊息（圖文選單點「我要點餐」或老闆指令）
   if (event.type === 'message' && event.message.type === 'text') {
     const userText = event.message.text.trim();
     const userId = event.source.userId;
@@ -102,7 +96,6 @@ async function handleEvent(event) {
       return sendCategoryCarouselFlex(event.replyToken);
     }
 
-    // 老闆快速改售完狀態：#售完 雞腿飯
     if (userText.startsWith('#售完 ')) {
       const targetName = userText.replace('#售完 ', '').trim();
       const target = menuDB.find((m) => m.name === targetName);
@@ -115,7 +108,6 @@ async function handleEvent(event) {
       }
     }
 
-    // 老闆快速恢復上架：#上架 雞腿飯
     if (userText.startsWith('#上架 ')) {
       const targetName = userText.replace('#上架 ', '').trim();
       const target = menuDB.find((m) => m.name === targetName);
@@ -132,7 +124,6 @@ async function handleEvent(event) {
   return Promise.resolve(null);
 }
 
-// 加入購物車（相同品項＋相同備註合併數量）
 function addToCart(userId, item, options) {
   const list = cartDB.get(userId) || [];
   const existing = list.find((c) => c.item_id === item.item_id && c.options === options);
@@ -162,7 +153,6 @@ function getCartSummary(userId) {
   return { list, totalAmount, summaryText };
 }
 
-// 步驟 1：左右滑動分類卡片 (Carousel Flex Message)
 function sendCategoryCarouselFlex(replyToken) {
   const categories = ['主食便當區', '單點炸物區', '飲料湯品區'];
   const bubbles = categories.map((cat) => {
@@ -201,7 +191,6 @@ function sendCategoryCarouselFlex(replyToken) {
   });
 }
 
-// 步驟 2A：飲料冰塊按鈕
 function sendDrinkIceFlex(replyToken, itemId, itemName) {
   return client.replyMessage(replyToken, {
     type: 'flex',
@@ -230,7 +219,6 @@ function sendDrinkIceFlex(replyToken, itemId, itemName) {
   });
 }
 
-// 步驟 2B：飲料甜度按鈕
 function sendDrinkSugarFlex(replyToken, itemId, ice) {
   return client.replyMessage(replyToken, {
     type: 'flex',
@@ -259,7 +247,6 @@ function sendDrinkSugarFlex(replyToken, itemId, ice) {
   });
 }
 
-// 步驟 2C：加入購物車後詢問 [繼續加點] 或 [去結帳]
 function sendCartPromptFlex(replyToken, userId, headerMsg) {
   const { totalAmount, summaryText } = getCartSummary(userId);
   return client.replyMessage(replyToken, {
@@ -295,7 +282,6 @@ function sendCartPromptFlex(replyToken, userId, headerMsg) {
   });
 }
 
-// 步驟 3A：選擇取餐時間
 function sendPickupTimeFlex(replyToken, userId) {
   const { totalAmount, summaryText } = getCartSummary(userId);
   if (!summaryText) {
@@ -323,4 +309,21 @@ function sendPickupTimeFlex(replyToken, userId) {
               type: 'postback',
               label: t,
               data: `action=select_pickup&time=${encodeURIComponent(t)}`,
- 
+            },
+          })),
+        ],
+      },
+    },
+  });
+}
+
+async function handleDepositCheck(event, userId, pickupTime) {
+  const { totalAmount } = getCartSummary(userId);
+
+  if (totalAmount >= 500) {
+    const deposit = Math.ceil(totalAmount * 0.5);
+    return client.replyMessage(event.replyToken, {
+      type: 'flex',
+      altText: '滿 500 元需先付 50% 訂金',
+      contents: {
+        type: 'bubbl
