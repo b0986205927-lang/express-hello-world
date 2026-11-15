@@ -87,8 +87,7 @@ async function handleEvent(event) {
       const paymentStatus = params.get('pay');
       return finalizeOrder(event, userId, pickupTime, paymentStatus);
     }
-  }
-      if (action === 'ask_last5') {
+    if (action === 'ask_last5') {
       const pickupTime = params.get('time');
       const deposit = params.get('deposit');
       pendingDepositDB.set(userId, { pickupTime, deposit });
@@ -99,6 +98,8 @@ async function handleEvent(event) {
           deposit +
           ' 訂金帳款。',
       });
+  }
+      
     }
 
 
