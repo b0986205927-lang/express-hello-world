@@ -23,6 +23,8 @@ const menuDB = [
 // 2. 購物車暫存表 (Cart) & 3. 正式訂單紀錄表 (Orders)
 const cartDB = new Map();
 const ordersDB = [];
+const pendingDepositDB = new Map();
+
 
 app.post('/callback', line.middleware(config), (req, res) => {
   Promise.all(req.body.events.map(handleEvent))
@@ -86,11 +88,66 @@ async function handleEvent(event) {
       return finalizeOrder(event, userId, pickupTime, paymentStatus);
     }
   }
+      if (action === 'ask_last5') {
+      const pickupTime = params.get('time');
+      const deposit = params.get('deposit');
+      pendingDepositDB.set(userId, { pickupTime, deposit });
+      return client.replyMessage(event.replyToken, {
+        type: 'text',
+        text:
+          '請直接輸入您的「轉帳帳號末五碼」（例如：12345），方便店家核對 $' +
+          deposit +
+          ' 訂金帳款。',
+      });
+    }
+
 
   if (event.type === 'message' && event.message.type === 'text') {
     const userText = event.message.text.trim();
     const userId = event.source.userId;
+    if (pendingDepositDB.has(userId)) {
+      if (!/^\d{5}$/.test(userText)) {
+        return client.replyMessage(event.replyToken, {
+          type: 'text',
+          text: '請輸入 5 碼數字的「轉帳帳號末五碼」喔（例如：12345）。',
+        });
+      }
+      const { pickupTime, deposit } = pendingDepositDB.get(userId);
+      pendingDepositDB.delete(userId);
+      return finalizeOrder(event, userId, pickupTime, '已轉訂金 $' + deposit + '（末五碼 ' + userText + '）');
+    }
 
+    if (userText === '查詢訂單') {
+      const myOrders = ordersDB.filter((o) => o.user_id === userId);
+      if (myOrders.length === 0) {
+        return client.replyMessage(event.replyToken, {
+          type: 'text',
+          text: '您目前還沒有成立的訂單喔！想點餐請輸入「我要點餐」。',
+        });
+      }
+      const latest = myOrders[myOrders.length - 1];
+      const itemsText = latest.items_detail
+        .map((item) => {
+          const opt = item.options ? '（' + item.options + '）' : '';
+          return '• ' + item.name + opt + ' x' + item.qty + ' = $' + item.price * item.qty;
+        })
+        .join('\n');
+
+      return client.replyMessage(event.replyToken, {
+        type: 'text',
+        text:
+          '📋 您最新一筆訂單\n單號：' +
+          latest.order_id +
+          '\n預計取餐：' +
+          latest.pickup_time +
+          '\n付款狀態：' +
+          latest.payment_status +
+          '\n\n' +
+          itemsText +
+          '\n總金額：$' +
+          latest.total_amount,
+      });
+    }
     if (userText === '我要點餐') {
       return sendCategoryCarouselFlex(event.replyToken);
     }
@@ -353,10 +410,10 @@ async function handleDepositCheck(event, userId, pickupTime) {
                 type: 'postback',
                 label: '✅ 我已轉帳 $' + deposit,
                 data:
-                  'action=confirm_order&time=' +
+                  'action=ask_last5&time=' +
                   encodeURIComponent(pickupTime) +
-                  '&pay=' +
-                  encodeURIComponent('已轉一半訂金'),
+                  '&deposit=' +
+                  deposit,
               },
             },
           ],
