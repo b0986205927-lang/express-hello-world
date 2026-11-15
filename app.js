@@ -87,18 +87,19 @@ async function handleEvent(event) {
       const paymentStatus = params.get('pay');
       return finalizeOrder(event, userId, pickupTime, paymentStatus);
     }
-    if (action === 'ask_last5') {
+        if (action === 'ask_last5') {
       const pickupTime = params.get('time');
-      const deposit = params.get('deposit');
-      pendingDepositDB.set(userId, { pickupTime, deposit });
+      const payLabel = params.get('label');
+      pendingDepositDB.set(userId, { pickupTime, payLabel });
       return client.replyMessage(event.replyToken, {
         type: 'text',
         text:
-          '請直接輸入您的「轉帳帳號末五碼」（例如：12345），方便店家核對 $' +
-          deposit +
-          ' 訂金帳款。',
+          '請直接輸入您的「轉帳帳號末五碼」（例如：12345），方便店家核對【' +
+          payLabel +
+          '】帳款。',
       });
-  }
+    }
+
       
     }
 
@@ -113,9 +114,10 @@ async function handleEvent(event) {
           text: '請輸入 5 碼數字的「轉帳帳號末五碼」喔（例如：12345）。',
         });
       }
-      const { pickupTime, deposit } = pendingDepositDB.get(userId);
-      pendingDepositDB.delete(userId);
-      return finalizeOrder(event, userId, pickupTime, '已轉訂金 $' + deposit + '（末五碼 ' + userText + '）');
+          const { pickupTime, payLabel } = pendingDepositDB.get(userId);
+    pendingDepositDB.delete(userId);
+    return finalizeOrder(event, userId, pickupTime, payLabel + '（末五碼 ' + userText + '）');
+
     }
 
     if (userText === '查詢訂單') {
@@ -386,23 +388,28 @@ async function handleDepositCheck(event, userId, pickupTime) {
 
   if (totalAmount >= 500) {
     const deposit = Math.ceil(totalAmount * 0.5);
+    const halfLabel = '已轉訂金一半 $' + deposit;
+    const fullLabel = '已全部付清 $' + totalAmount;
+
     return client.replyMessage(event.replyToken, {
       type: 'flex',
-      altText: '滿 500 元需先付 50% 訂金',
+      altText: '滿 500 元請選擇銀行轉帳方式',
       contents: {
         type: 'bubble',
         body: {
           type: 'box',
           layout: 'vertical',
           contents: [
-            { type: 'text', text: '💳 大單訂金提醒', weight: 'bold', size: 'lg', color: '#E63946' },
+            { type: 'text', text: '💳 銀行轉帳付款', weight: 'bold', size: 'lg', color: '#E63946' },
             {
               type: 'text',
               text:
-                '訂單總額 $' +
+                '訂單總額：$' +
                 totalAmount +
-                '（滿 $500）\n請先轉帳 50% 訂金：$' +
+                '（滿 $500 需先轉帳）\n・訂金收一半：$' +
                 deposit +
+                '\n・全部一次付清：$' +
+                totalAmount +
                 '\n\n🏦 銀行代號：807（永豐）\n帳號：請填入老闆帳號',
               size: 'sm',
               margin: 'md',
@@ -415,19 +422,34 @@ async function handleDepositCheck(event, userId, pickupTime) {
               margin: 'md',
               action: {
                 type: 'postback',
-                label: '✅ 我已轉帳 $' + deposit,
+                label: '💰 訂金付一半 $' + deposit,
                 data:
                   'action=ask_last5&time=' +
                   encodeURIComponent(pickupTime) +
-                  '&deposit=' +
-                  deposit,
+                  '&label=' +
+                  encodeURIComponent(halfLabel),
+              },
+            },
+            {
+              type: 'button',
+              style: 'primary',
+              color: '#2A9D8F',
+              margin: 'sm',
+              action: {
+                type: 'postback',
+                label: '✅ 全部付清 $' + totalAmount,
+                data:
+                  'action=ask_last5&time=' +
+                  encodeURIComponent(pickupTime) +
+                  '&label=' +
+                  encodeURIComponent(fullLabel),
               },
             },
           ],
         },
       },
     });
-  }
+  }  
 
   return finalizeOrder(event, userId, pickupTime, '現場付');
 }
