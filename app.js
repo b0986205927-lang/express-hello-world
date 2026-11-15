@@ -375,7 +375,13 @@ function sendPickupTimeFlex(replyToken, userId) {
   });
 }
 async function handleDepositCheck(event, userId, pickupTime) {
-  const { totalAmount } = getCartSummary(userId);
+  const { list, totalAmount } = getCartSummary(userId);
+  if (list.length === 0 || totalAmount <= 0) {
+    return client.replyMessage(event.replyToken, {
+      type: 'text',
+      text: '您的購物車目前是空的喔！請重新點選「我要點餐」選購餐點。',
+    });
+  }
 
   if (totalAmount >= 500) {
     const deposit = Math.ceil(totalAmount * 0.5);
