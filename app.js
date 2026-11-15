@@ -32,7 +32,6 @@ app.post('/callback', line.middleware(config), (req, res) => {
       res.status(500).end();
     });
 });
-
 async function handleEvent(event) {
   if (event.type === 'postback') {
     const userId = event.source.userId;
@@ -123,7 +122,6 @@ async function handleEvent(event) {
 
   return Promise.resolve(null);
 }
-
 function addToCart(userId, item, options) {
   const list = cartDB.get(userId) || [];
   const existing = list.find((c) => c.item_id === item.item_id && c.options === options);
@@ -152,7 +150,6 @@ function getCartSummary(userId) {
     .join('\n');
   return { list, totalAmount, summaryText };
 }
-
 function sendCategoryCarouselFlex(replyToken) {
   const categories = ['主食便當區', '單點炸物區', '飲料湯品區'];
   const bubbles = categories.map((cat) => {
@@ -190,7 +187,6 @@ function sendCategoryCarouselFlex(replyToken) {
     contents: { type: 'carousel', contents: bubbles },
   });
 }
-
 function sendDrinkIceFlex(replyToken, itemId, itemName) {
   return client.replyMessage(replyToken, {
     type: 'flex',
@@ -252,7 +248,6 @@ function sendDrinkSugarFlex(replyToken, itemId, ice) {
     },
   });
 }
-
 function sendCartPromptFlex(replyToken, userId, headerMsg) {
   const { totalAmount, summaryText } = getCartSummary(userId);
   return client.replyMessage(replyToken, {
@@ -322,13 +317,7 @@ function sendPickupTimeFlex(replyToken, userId) {
     },
   });
 }
-
 async function handleDepositCheck(event, userId, pickupTime) {
-  const { totalAmount } = getCartSummary(userId);
-
-  if (totalAmount >= 500) {
-    const deposit = Math.
-      async function handleDepositCheck(event, userId, pickupTime) {
   const { totalAmount } = getCartSummary(userId);
 
   if (totalAmount >= 500) {
