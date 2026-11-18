@@ -580,6 +580,7 @@ async function finalizeOrder(event, userId, pickupTime, paymentStatus) {
     }
   });
 }
+{
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
