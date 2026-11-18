@@ -72,7 +72,16 @@ async function handleEvent(event) {
     if (action === 'open_menu') {
       return sendCategoryCarouselFlex(event.replyToken);
     }
-      if (action === 'clear_cart') {
+      if (action === 'clear_cart') {  if (action === 'cancel_order') {
+    const cancelId = params.get('orderId') || '';
+    if (typeof userOrders !== 'undefined') delete userOrders[userId];
+    if (typeof orders !== 'undefined') delete orders[userId];
+    return client.replyMessage(event.replyToken, {
+      type: 'text',
+      text: '❌ 訂單 ' + cancelId + ' 已為您取消！若需重新點餐，請點選下方「線上點餐」。'
+    });
+  }
+
     if (typeof userCarts !== 'undefined') userCarts[userId] = [];
     if (typeof carts !== 'undefined') carts[userId] = [];
     return client.replyMessage(event.replyToken, {
@@ -522,19 +531,32 @@ async function finalizeOrder(event, userId, pickupTime, paymentStatus) {
     });
   }
 
-  return client.replyMessage(event.replyToken, {
-    type: 'text',
-    text:
-      '🎉 訂單成立！\n單號：' +
-      orderId +
-      '\n預計取餐：' +
-      pickupTime +
-      '\n付款方式：' +
-      paymentStatus +
-      '\n\n' +
-      summaryText +
-      '\n總金額：$' +
-      totalAmount,
+    return client.replyMessage(event.replyToken, {
+    type: 'flex',
+    altText: '🎉 訂單成立通知',
+    contents: {
+      type: 'bubble',
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        contents: [
+          { type: 'text', text: '🎉 訂單成立！', weight: 'bold', size: 'lg', color: '#1DB446' },
+          { type: 'text', text: '單號：' + orderId, size: 'sm', margin: 'md', weight: 'bold' },
+          { type: 'text', text: '預計取餐：' + pickupTime, size: 'sm', margin: 'xs' },
+          { type: 'text', text: '付款方式：' + paymentStatus, size: 'sm', margin: 'xs' },
+          { type: 'separator', margin: 'md' },
+          { type: 'text', text: summaryText, size: 'sm', margin: 'md', wrap: true },
+          { type: 'text', text: '總金額：$' + totalAmount, weight: 'bold', size: 'md', margin: 'md' },
+          {
+            type: 'button',
+            style: 'secondary',
+            margin: 'lg',
+            height: 'sm',
+            action: { type: 'postback', label: '❌ 取消此筆訂單', data: 'action=cancel_order&orderId=' + orderId }
+          }
+        ]
+      }
+    }
   });
 }
 
