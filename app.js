@@ -146,7 +146,7 @@ async function handleEvent(event) {
     pendingDepositDB.delete(userId);
     return finalizeOrder(event, userId, pickupTime, payLabel + ' (末五碼：' + userText + ')');
  
-      });
+     
     }
   if (userText === '查詢訂單') {
     const myOrders = ordersDB.filter(o => o.user_id === userId);
