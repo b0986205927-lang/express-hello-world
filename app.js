@@ -131,6 +131,7 @@ async function handleEvent(event) {
       
     }
 
+{
 
   if (event.type === 'message' && event.message.type === 'text') {
     const userText = event.message.text.trim();
