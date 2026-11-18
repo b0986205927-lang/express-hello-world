@@ -72,7 +72,16 @@ async function handleEvent(event) {
     if (action === 'open_menu') {
       return sendCategoryCarouselFlex(event.replyToken);
     }
-      if (action === 'clear_cart') {  if (action === 'cancel_order') {
+      if (action === 'clear_cart') {
+    if (typeof userCarts !== 'undefined') userCarts[userId] = [];
+    if (typeof carts !== 'undefined') carts[userId] = [];
+    return client.replyMessage(event.replyToken, {
+      type: 'text',
+      text: '🗑️ 購物車已清空！想重新點餐請點下方「線上點餐」或輸入「我要點餐」。'
+    });
+  }
+
+  if (action === 'cancel_order') {
     const cancelId = params.get('orderId') || '';
     if (typeof userOrders !== 'undefined') delete userOrders[userId];
     if (typeof orders !== 'undefined') delete orders[userId];
@@ -81,6 +90,7 @@ async function handleEvent(event) {
       text: '❌ 訂單 ' + cancelId + ' 已為您取消！若需重新點餐，請點選下方「線上點餐」。'
     });
   }
+
 
     if (typeof userCarts !== 'undefined') userCarts[userId] = [];
     if (typeof carts !== 'undefined') carts[userId] = [];
@@ -128,24 +138,48 @@ async function handleEvent(event) {
     if (pendingDepositDB.has(userId)) {
       if (!/^\d{5}$/.test(userText)) {
         return client.replyMessage(event.replyToken, {
-          type: 'text',
-          text: '請輸入 5 碼數字的「轉帳帳號末五碼」喔（例如：12345）。',
-        });
-      }
-          const { pickupTime, payLabel } = pendingDepositDB.get(userId);
-    pendingDepositDB.delete(userId);
-    return finalizeOrder(event, userId, pickupTime, payLabel + '（末五碼 ' + userText + '）');
-
+           if (userText === '查詢訂單') {
+    const myOrders = ordersDB.filter(o => o.user_id === userId);
+    if (myOrders.length === 0) {
+      return client.replyMessage(event.replyToken, {
+        type: 'text',
+        text: '您目前還沒有成立的訂單喔！想點餐請輸入「我要點餐」。'
+      });
     }
+    const latest = myOrders[myOrders.length - 1];
+    const itemsText = latest.items.detail.map(item => {
+      const opt = item.options ? (' (' + item.options + ')') : '';
+      return '• ' + item.name + opt + ' x ' + item.qty + ' = $' + (item.price * item.qty);
+    }).join('\n');
 
-    if (userText === '查詢訂單') {
-      const myOrders = ordersDB.filter((o) => o.user_id === userId);
-      if (myOrders.length === 0) {
-        return client.replyMessage(event.replyToken, {
-          type: 'text',
-          text: '您目前還沒有成立的訂單喔！想點餐請輸入「我要點餐」。',
-        });
+    return client.replyMessage(event.replyToken, {
+      type: 'flex',
+      altText: '📋 您的最新訂單',
+      contents: {
+        type: 'bubble',
+        body: {
+          type: 'box',
+          layout: 'vertical',
+          contents: [
+            { type: 'text', text: '📋 您最新一筆訂單', weight: 'bold', size: 'lg', color: '#1DB446' },
+            { type: 'text', text: '單號：' + latest.order_id, size: 'sm', margin: 'md', weight: 'bold' },
+            { type: 'text', text: '預計取餐：' + latest.pickup_time, size: 'sm', margin: 'xs' },
+            { type: 'text', text: '付款方式：' + latest.payment_status, size: 'sm', margin: 'xs' },
+            { type: 'separator', margin: 'md' },
+            { type: 'text', text: itemsText, size: 'sm', margin: 'md', wrap: true },
+            { type: 'text', text: '總金額：$' + latest.total_amount, weight: 'bold', size: 'md', margin: 'md' },
+            {
+              type: 'button',
+              style: 'secondary',
+              margin: 'lg',
+              height: 'sm',
+              action: { type: 'postback', label: '❌ 取消此筆訂單', data: 'action=cancel_order&orderId=' + latest.order_id }
+            }
+          ]
+        }
       }
+    });
+  }
       const latest = myOrders[myOrders.length - 1];
       const itemsText = latest.items_detail
         .map((item) => {
