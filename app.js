@@ -145,7 +145,9 @@ async function handleEvent(event) {
     const { pickupTime, payLabel } = pendingDepositDB.get(userId);
     pendingDepositDB.delete(userId);
     return finalizeOrder(event, userId, pickupTime, payLabel + ' (末五碼：' + userText + ')');
-  }
+ 
+      });
+    }
   if (userText === '查詢訂單') {
     const myOrders = ordersDB.filter(o => o.user_id === userId);
     if (myOrders.length === 0) {
@@ -188,64 +190,6 @@ async function handleEvent(event) {
       }
     });
   }
-   
-    const itemsText = latest.items.detail.map(item => {
-      const opt = item.options ? (' (' + item.options + ')') : '';
-      return '• ' + item.name + opt + ' x ' + item.qty + ' = $' + (item.price * item.qty);
-    }).join('\n');
-
-    return client.replyMessage(event.replyToken, {
-      type: 'flex',
-      altText: '📋 您的最新訂單',
-      contents: {
-        type: 'bubble',
-        body: {
-          type: 'box',
-          layout: 'vertical',
-          contents: [
-            { type: 'text', text: '📋 您最新一筆訂單', weight: 'bold', size: 'lg', color: '#1DB446' },
-            { type: 'text', text: '單號：' + latest.order_id, size: 'sm', margin: 'md', weight: 'bold' },
-            { type: 'text', text: '預計取餐：' + latest.pickup_time, size: 'sm', margin: 'xs' },
-            { type: 'text', text: '付款方式：' + latest.payment_status, size: 'sm', margin: 'xs' },
-            { type: 'separator', margin: 'md' },
-            { type: 'text', text: itemsText, size: 'sm', margin: 'md', wrap: true },
-            { type: 'text', text: '總金額：$' + latest.total_amount, weight: 'bold', size: 'md', margin: 'md' },
-            {
-              type: 'button',
-              style: 'secondary',
-              margin: 'lg',
-              height: 'sm',
-              action: { type: 'postback', label: '❌ 取消此筆訂單', data: 'action=cancel_order&orderId=' + latest.order_id }
-            }
-          ]
-        }
-      }
-    });
-  }
-  }
-      const latest = myOrders[myOrders.length - 1];
-      const itemsText = latest.items_detail
-        .map((item) => {
-          const opt = item.options ? '（' + item.options + '）' : '';
-          return '• ' + item.name + opt + ' x' + item.qty + ' = $' + item.price * item.qty;
-        })
-        .join('\n');
-
-      return client.replyMessage(event.replyToken, {
-        type: 'text',
-        text:
-          '📋 您最新一筆訂單\n單號：' +
-          latest.order_id +
-          '\n預計取餐：' +
-          latest.pickup_time +
-          '\n付款狀態：' +
-          latest.payment_status +
-          '\n\n' +
-          itemsText +
-          '\n總金額：$' +
-          latest.total_amount,
-      });
-    }
     if (userText === '我要點餐') {
       return sendCategoryCarouselFlex(event.replyToken);
     }
