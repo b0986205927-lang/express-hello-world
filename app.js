@@ -220,7 +220,6 @@ async function handleEvent(event) {
   }
 
   return Promise.resolve(null);
-}
 function addToCart(userId, item, options) {
   const list = cartDB.get(userId) || [];
   const existing = list.find((c) => c.item_id === item.item_id && c.options === options);
