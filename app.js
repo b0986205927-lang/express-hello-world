@@ -72,6 +72,15 @@ async function handleEvent(event) {
     if (action === 'open_menu') {
       return sendCategoryCarouselFlex(event.replyToken);
     }
+      if (action === 'clear_cart') {
+    if (typeof userCarts !== 'undefined') userCarts[userId] = [];
+    if (typeof carts !== 'undefined') carts[userId] = [];
+    return client.replyMessage(event.replyToken, {
+      type: 'text',
+      text: '🗑️ 購物車已清空！想重新點餐請點下方「線上點餐」或輸入「我要點餐」。'
+    });
+  }
+
 
     if (action === 'checkout_time') {
       return sendPickupTimeFlex(event.replyToken, userId);
@@ -329,6 +338,17 @@ function sendCartPromptFlex(replyToken, userId, headerMsg) {
             height: 'sm',
             action: { type: 'postback', label: '➕ 繼續加點', data: 'action=open_menu' },
           },
+          {
+  "type": "button",
+  "style": "secondary",
+  "color": "#999999",
+  "action": {
+    "type": "postback",
+    "label": "🗑️ 清空購物車",
+    "data": "action=clear_cart"
+  }
+},
+
           {
             type: 'button',
             style: 'primary',
