@@ -135,10 +135,18 @@ async function handleEvent(event) {
   if (event.type === 'message' && event.message.type === 'text') {
     const userText = event.message.text.trim();
     const userId = event.source.userId;
-    if (pendingDepositDB.has(userId)) {
-      if (!/^\d{5}$/.test(userText)) {
-        return client.replyMessage(event.replyToken, {
-       if (userText === '查詢訂單') {
+     if (pendingDepositDB.has(userId)) {
+    if (!/^\d{5}$/.test(userText)) {
+      return client.replyMessage(event.replyToken, {
+        type: 'text',
+        text: '請輸入 5 碼數字的「轉帳末五碼」(例如：12345)'
+      });
+    }
+    const { pickupTime, payLabel } = pendingDepositDB.get(userId);
+    pendingDepositDB.delete(userId);
+    return finalizeOrder(event, userId, pickupTime, payLabel + ' (末五碼：' + userText + ')');
+  }
+  if (userText === '查詢訂單') {
     const myOrders = ordersDB.filter(o => o.user_id === userId);
     if (myOrders.length === 0) {
       return client.replyMessage(event.replyToken, {
@@ -147,6 +155,40 @@ async function handleEvent(event) {
       });
     }
     const latest = myOrders[myOrders.length - 1];
+    const itemsText = latest.items.detail.map(item => {
+      const opt = item.options ? (' (' + item.options + ')') : '';
+      return '• ' + item.name + opt + ' x ' + item.qty + ' = $' + (item.price * item.qty);
+    }).join('\n');
+
+    return client.replyMessage(event.replyToken, {
+      type: 'flex',
+      altText: '📋 您的最新訂單',
+      contents: {
+        type: 'bubble',
+        body: {
+          type: 'box',
+          layout: 'vertical',
+          contents: [
+            { type: 'text', text: '📋 您最新一筆訂單', weight: 'bold', size: 'lg', color: '#1DB446' },
+            { type: 'text', text: '單號：' + latest.order_id, size: 'sm', margin: 'md', weight: 'bold' },
+            { type: 'text', text: '預計取餐：' + latest.pickup_time, size: 'sm', margin: 'xs' },
+            { type: 'text', text: '付款方式：' + latest.payment_status, size: 'sm', margin: 'xs' },
+            { type: 'separator', margin: 'md' },
+            { type: 'text', text: itemsText, size: 'sm', margin: 'md', wrap: true },
+            { type: 'text', text: '總金額：$' + latest.total_amount, weight: 'bold', size: 'md', margin: 'md' },
+            {
+              type: 'button',
+              style: 'secondary',
+              margin: 'lg',
+              height: 'sm',
+              action: { type: 'postback', label: '❌ 取消此筆訂單', data: 'action=cancel_order&orderId=' + latest.order_id }
+            }
+          ]
+        }
+      }
+    });
+  }
+   
     const itemsText = latest.items.detail.map(item => {
       const opt = item.options ? (' (' + item.options + ')') : '';
       return '• ' + item.name + opt + ' x ' + item.qty + ' = $' + (item.price * item.qty);
