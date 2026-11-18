@@ -138,7 +138,7 @@ async function handleEvent(event) {
     if (pendingDepositDB.has(userId)) {
       if (!/^\d{5}$/.test(userText)) {
         return client.replyMessage(event.replyToken, {
-           if (userText === '查詢訂單') {
+       if (userText === '查詢訂單') {
     const myOrders = ordersDB.filter(o => o.user_id === userId);
     if (myOrders.length === 0) {
       return client.replyMessage(event.replyToken, {
@@ -179,6 +179,7 @@ async function handleEvent(event) {
         }
       }
     });
+  }
   }
       const latest = myOrders[myOrders.length - 1];
       const itemsText = latest.items_detail
