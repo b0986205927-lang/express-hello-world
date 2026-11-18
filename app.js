@@ -131,7 +131,7 @@ async function handleEvent(event) {
       
     }
 
-{
+
 
   if (event.type === 'message' && event.message.type === 'text') {
     const userText = event.message.text.trim();
@@ -580,7 +580,6 @@ async function finalizeOrder(event, userId, pickupTime, paymentStatus) {
     }
   });
 }
-{
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
