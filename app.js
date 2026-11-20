@@ -32,9 +32,7 @@ app.post('/callback', line.middleware(config), (req, res) => {
       console.error(err);
       res.status(500).end();
     });
-});
-
-async function handleEvent(event) {
+  async function handleEvent(event) {
   if (!event || !event.source) {
     return Promise.resolve(null);
   }
@@ -82,8 +80,7 @@ async function handleEvent(event) {
       addToCart(userId, item, options);
       return sendCartPromptFlex(event.replyToken, userId, '已加入「' + item.name + ' (' + options + ')」');
     }
-
-    if (action === 'open_menu') {
+        if (action === 'open_menu') {
       return sendCategoryCarouselFlex(event.replyToken);
     }
 
@@ -150,8 +147,7 @@ async function handleEvent(event) {
 
     return Promise.resolve(null);
   }
-
-  if (event.type === 'message' && event.message.type === 'text') {
+     if (event.type === 'message' && event.message.type === 'text') {
     const userText = event.message.text.trim();
 
     if (pendingDepositDB.has(userId)) {
@@ -275,8 +271,7 @@ function getCartSummary(userId) {
     .join('\n');
   return { list, totalAmount, summaryText };
 }
-
-function sendCategoryCarouselFlex(replyToken) {
+  function sendCategoryCarouselFlex(replyToken) {
   const categories = ['主食便當區', '單點炸物區', '飲料湯品區'];
   const bubbles = categories.map((cat) => {
     const items = menuDB.filter((m) => m.category === cat && !m.is_sold_out);
@@ -300,4 +295,338 @@ function sendCategoryCarouselFlex(replyToken) {
         layout: 'vertical',
         contents: [
           { type: 'text', text: '🍽️ ' + cat, weight: 'bold', size: 'lg', color: '#1DB446' },
-          { type: 'text', text: '🍽️ ' + cat, weight: 'bold', size: 'lg', color: '#1DB446' },
+          { type: 'separator', margin: 'md' },
+          ...buttons,
+        ],
+      },
+    };
+  });
+
+  return client.replyMessage(replyToken, {
+    type: 'flex',
+    altText: '請滑動選擇餐點分類',
+    contents: { type: 'carousel', contents: bubbles },
+  });
+}
+
+function sendDrinkIceFlex(replyToken, itemId, itemName) {
+  const iceOptions = ['正常冰', '少冰', '去冰'].map((ice) => ({
+    type: 'button',
+    style: 'secondary',
+    margin: 'sm',
+    height: 'sm',
+    action: {
+      type: 'postback',
+      label: ice,
+      data: 'action=drink_ice&item_id=' + itemId + '&ice=' + encodeURIComponent(ice),
+    },
+  }));
+
+  return client.replyMessage(replyToken, {
+    type: 'flex',
+    altText: '請選擇冰塊',
+    contents: {
+      type: 'bubble',
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        contents: [
+          { type: 'text', text: '🥤 ' + itemName + ' - 請選冰塊', weight: 'bold', size: 'md' },
+          ...iceOptions,
+        ],
+      },
+    },
+  });
+}
+
+function sendDrinkSugarFlex(replyToken, itemId, ice) {
+  const sugarOptions = ['全糖', '半糖', '無糖'].map((sugar) => ({
+    type: 'button',
+    style: 'secondary',
+    margin: 'sm',
+    height: 'sm',
+    action: {
+      type: 'postback',
+      label: sugar,
+      data:
+        'action=drink_sugar&item_id=' +
+        itemId +
+        '&ice=' +
+        encodeURIComponent(ice) +
+        '&sugar=' +
+        encodeURIComponent(sugar),
+    },
+  }));
+
+  return client.replyMessage(replyToken, {
+    type: 'flex',
+    altText: '請選擇甜度',
+    contents: {
+      type: 'bubble',
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        contents: [
+          { type: 'text', text: '甜度選擇（目前：' + ice + '）', weight: 'bold', size: 'md' },
+          ...sugarOptions,
+        ],
+      },
+    },
+  });
+}
+
+function sendCartPromptFlex(replyToken, userId, headerMsg) {
+  const { totalAmount, summaryText } = getCartSummary(userId);
+  return client.replyMessage(replyToken, {
+    type: 'flex',
+    altText: '購物車狀態',
+    contents: {
+      type: 'bubble',
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        contents: [
+          { type: 'text', text: headerMsg, weight: 'bold', size: 'md', color: '#1DB446' },
+          { type: 'text', text: summaryText || '購物車是空的', size: 'sm', margin: 'md', wrap: true },
+          { type: 'text', text: '目前小計：$' + totalAmount, weight: 'bold', size: 'md', margin: 'md' },
+          {
+            type: 'button',
+            style: 'secondary',
+            margin: 'md',
+            height: 'sm',
+            action: { type: 'postback', label: '➕ 繼續加點', data: 'action=open_menu' },
+          },
+          {
+            type: 'button',
+            style: 'secondary',
+            color: '#999999',
+            margin: 'sm',
+            height: 'sm',
+            action: { type: 'postback', label: '🗑️ 清空購物車', data: 'action=clear_cart' },
+          },
+          {
+            type: 'button',
+            style: 'primary',
+            color: '#FF6B6B',
+            margin: 'sm',
+            height: 'sm',
+            action: { type: 'postback', label: '🛒 去結帳', data: 'action=checkout_time' },
+          },
+        ],
+      },
+    },
+  });
+}
+ function sendPickupTimeFlex(replyToken, userId) {
+  const { totalAmount, summaryText } = getCartSummary(userId);
+  if (!summaryText || totalAmount <= 0) {
+    return client.replyMessage(replyToken, {
+      type: 'text',
+      text: '您的購物車目前沒有餐點喔！',
+    });
+  }
+
+  const timeButtons = ['15分鐘後', '30分鐘後', '45分鐘後'].map((t) => ({
+    type: 'button',
+    style: 'primary',
+    color: '#1DB446',
+    margin: 'sm',
+    height: 'sm',
+    action: {
+      type: 'postback',
+      label: t,
+      data: 'action=select_pickup&time=' + encodeURIComponent(t),
+    },
+  }));
+
+  return client.replyMessage(replyToken, {
+    type: 'flex',
+    altText: '請選擇預計取餐時間',
+    contents: {
+      type: 'bubble',
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        contents: [
+          { type: 'text', text: '⏰ 請選擇預計取餐時間', weight: 'bold', size: 'md' },
+          { type: 'text', text: summaryText + '\n總金額：$' + totalAmount, size: 'sm', margin: 'md', wrap: true },
+          ...timeButtons,
+        ],
+      },
+    },
+  });
+}
+
+async function handleDepositCheck(event, userId, pickupTime) {
+  const { list, totalAmount } = getCartSummary(userId);
+  if (!list.length || totalAmount <= 0) {
+    return client.replyMessage(event.replyToken, {
+      type: 'text',
+      text: '您的購物車目前是空的喔！請重新點選「我要點餐」選購餐點。',
+    });
+  }
+
+  if (totalAmount >= 500) {
+    const deposit = Math.ceil(totalAmount * 0.5);
+    const halfLabel = '已轉訂金一半 $' + deposit;
+    const fullLabel = '已全部付清 $' + totalAmount;
+
+    return client.replyMessage(event.replyToken, {
+      type: 'flex',
+      altText: '滿 500 元請選擇匯款方式',
+      contents: {
+        type: 'bubble',
+        body: {
+          type: 'box',
+          layout: 'vertical',
+          contents: [
+            { type: 'text', text: '🏦 銀行轉帳付款', weight: 'bold', size: 'lg', color: '#E63946' },
+            {
+              type: 'text',
+              text:
+                '訂單總額：$' +
+                totalAmount +
+                '\n（滿 $500 需先轉帳）\n・訂金收一半：$' +
+                deposit +
+                '\n・全部一次付清：$' +
+                totalAmount +
+                '\n\n銀行代號：807 (永豐)\n帳號：請填入老闆帳號',
+              size: 'sm',
+              margin: 'md',
+              wrap: true,
+            },
+            {
+              type: 'button',
+              style: 'primary',
+              color: '#FF6B6B',
+              margin: 'md',
+              action: {
+                type: 'postback',
+                label: '💳 訂金付一半 $' + deposit,
+                data:
+                  'action=ask_last5&time=' +
+                  encodeURIComponent(pickupTime) +
+                  '&label=' +
+                  encodeURIComponent(halfLabel),
+              },
+            },
+            {
+              type: 'button',
+              style: 'primary',
+              color: '#2A9D8F',
+              margin: 'sm',
+              action: {
+                type: 'postback',
+                label: '💳 全部付清 $' + totalAmount,
+                data:
+                  'action=ask_last5&time=' +
+                  encodeURIComponent(pickupTime) +
+                  '&label=' +
+                  encodeURIComponent(fullLabel),
+              },
+            },
+          ],
+        },
+      },
+    });
+  }
+
+  return finalizeOrder(event, userId, pickupTime, '現場付');
+}
+
+async function finalizeOrder(event, userId, pickupTime, paymentStatus) {
+  const { list, totalAmount, summaryText } = getCartSummary(userId);
+  if (!list.length || totalAmount <= 0) {
+    return client.replyMessage(event.replyToken, {
+      type: 'text',
+      text: '您的購物車目前是空的喔！請重新點選「我要點餐」選購餐點。',
+    });
+  }
+
+  let userName = 'LINE 顧客';
+  try {
+    const profile = await client.getProfile(userId);
+    if (profile && profile.displayName) {
+      userName = profile.displayName;
+    }
+  } catch (_) {}
+
+  const now = new Date();
+  const uniqueCode = String(now.getTime()).slice(-4);
+  const orderId =
+    'ORD-' +
+    now.getFullYear() +
+    String(now.getMonth() + 1).padStart(2, '0') +
+    String(now.getDate()).padStart(2, '0') +
+    '-' +
+    uniqueCode;
+
+  ordersDB.push({
+    order_id: orderId,
+    created_at: now.toISOString(),
+    pickup_time: pickupTime,
+    user_id: userId,
+    user_name: userName,
+    items_detail: list,
+    total_amount: totalAmount,
+    payment_status: paymentStatus,
+  });
+
+  cartDB.delete(userId);
+
+  if (OWNER_USER_ID) {
+    await client.pushMessage(OWNER_USER_ID, {
+      type: 'text',
+      text:
+        '📣 新訂單！' +
+        orderId +
+        '\n顧客：' +
+        userName +
+        '\n取餐時間：' +
+        pickupTime +
+        '\n付款狀態：' +
+        paymentStatus +
+        '\n---\n' +
+        summaryText +
+        '\n---\n總金額：$' +
+        totalAmount,
+    });
+  }
+
+  return client.replyMessage(event.replyToken, {
+    type: 'flex',
+    altText: '🎉 訂單成立通知',
+    contents: {
+      type: 'bubble',
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        contents: [
+          { type: 'text', text: '🎉 訂單成立！', weight: 'bold', size: 'lg', color: '#1DB446' },
+          { type: 'text', text: '單號：' + orderId, size: 'sm', margin: 'md', weight: 'bold' },
+          { type: 'text', text: '預計取餐：' + pickupTime, size: 'sm', margin: 'xs' },
+          { type: 'text', text: '付款方式：' + paymentStatus, size: 'sm', margin: 'xs' },
+          { type: 'separator', margin: 'md' },
+          { type: 'text', text: summaryText, size: 'sm', margin: 'md', wrap: true },
+          { type: 'text', text: '總金額：$' + totalAmount, weight: 'bold', size: 'md', margin: 'md' },
+          {
+            type: 'button',
+            style: 'secondary',
+            margin: 'lg',
+            height: 'sm',
+            action: {
+              type: 'postback',
+              label: '❌ 取消此筆訂單',
+              data: 'action=cancel_order&orderId=' + orderId,
+            },
+          },
+        ],
+      },
+    },
+  });
+}
+
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+  console.log('Server is running on port ' + port);
+}); 
