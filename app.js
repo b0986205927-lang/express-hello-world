@@ -97,15 +97,7 @@ app.post('/callback', line.middleware(config), (req, res) => {
       const cancelId = params.get('orderId') || '';
       const idx = ordersDB.findIndex((o) => o.order_id === cancelId && o.user_id === userId);
       if (idx !== -1) {
-        const canceledOrder = ordersDB[idx];
         ordersDB.splice(idx, 1);
-        pendingDepositDB.delete(userId);
-        if (OWNER_USER_ID) {
-          await client.pushMessage(OWNER_USER_ID, {
-            type: 'text',
-            text: '⚠️ 顧客已取消訂單：' + cancelId + '（' + canceledOrder.user_name + '）',
-          });
-        }
       }
       return client.replyMessage(event.replyToken, {
         type: 'text',
@@ -147,7 +139,7 @@ app.post('/callback', line.middleware(config), (req, res) => {
 
     return Promise.resolve(null);
   }
-   if (event.type === 'message' && event.message.type === 'text') {
+     if (event.type === 'message' && event.message.type === 'text') {
     const userText = event.message.text.trim();
 
     if (pendingDepositDB.has(userId)) {
@@ -209,9 +201,8 @@ app.post('/callback', line.middleware(config), (req, res) => {
           },
         },
       });
-    }
-
-    if (userText === '我要點餐') {
+    } 
+        if (userText === '我要點餐') {
       return sendCategoryCarouselFlex(event.replyToken);
     }
 
@@ -270,8 +261,8 @@ function getCartSummary(userId) {
     })
     .join('\n');
   return { list, totalAmount, summaryText };
-}
-function sendCategoryCarouselFlex(replyToken) {
+} 
+  function sendCategoryCarouselFlex(replyToken) {
   const categories = ['主食便當區', '單點炸物區', '飲料湯品區'];
   const bubbles = categories.map((cat) => {
     const items = menuDB.filter((m) => m.category === cat && !m.is_sold_out);
@@ -308,8 +299,7 @@ function sendCategoryCarouselFlex(replyToken) {
     contents: { type: 'carousel', contents: bubbles },
   });
 }
-
-function sendDrinkIceFlex(replyToken, itemId, itemName) {
+  function sendDrinkIceFlex(replyToken, itemId, itemName) {
   const iceOptions = ['正常冰', '少冰', '去冰'].map((ice) => ({
     type: 'button',
     style: 'secondary',
@@ -374,8 +364,7 @@ function sendDrinkSugarFlex(replyToken, itemId, ice) {
     },
   });
 }
-
-function sendCartPromptFlex(replyToken, userId, headerMsg) {
+ function sendCartPromptFlex(replyToken, userId, headerMsg) {
   const { totalAmount, summaryText } = getCartSummary(userId);
   return client.replyMessage(replyToken, {
     type: 'flex',
@@ -416,7 +405,8 @@ function sendCartPromptFlex(replyToken, userId, headerMsg) {
       },
     },
   });
-}  
+}
+
 function sendPickupTimeFlex(replyToken, userId) {
   const { totalAmount, summaryText } = getCartSummary(userId);
   if (!summaryText || totalAmount <= 0) {
@@ -455,9 +445,8 @@ function sendPickupTimeFlex(replyToken, userId) {
       },
     },
   });
-}
-
-async function handleDepositCheck(event, userId, pickupTime) {
+} 
+  async function handleDepositCheck(event, userId, pickupTime) {
   const { list, totalAmount } = getCartSummary(userId);
   if (!list.length || totalAmount <= 0) {
     return client.replyMessage(event.replyToken, {
@@ -533,8 +522,7 @@ async function handleDepositCheck(event, userId, pickupTime) {
 
   return finalizeOrder(event, userId, pickupTime, '現場付');
 }
-
-async function finalizeOrder(event, userId, pickupTime, paymentStatus) {
+ async function finalizeOrder(event, userId, pickupTime, paymentStatus) {
   const { list, totalAmount, summaryText } = getCartSummary(userId);
   if (!list.length || totalAmount <= 0) {
     return client.replyMessage(event.replyToken, {
@@ -552,14 +540,13 @@ async function finalizeOrder(event, userId, pickupTime, paymentStatus) {
   } catch (_) {}
 
   const now = new Date();
-  const uniqueCode = String(now.getTime()).slice(-4);
   const orderId =
     'ORD-' +
     now.getFullYear() +
     String(now.getMonth() + 1).padStart(2, '0') +
     String(now.getDate()).padStart(2, '0') +
     '-' +
-    uniqueCode;
+    String(ordersDB.length + 1).padStart(3, '0');
 
   ordersDB.push({
     order_id: orderId,
@@ -629,5 +616,5 @@ async function finalizeOrder(event, userId, pickupTime, paymentStatus) {
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
   console.log('Server is running on port ' + port);
-});  
+}); 
 });
