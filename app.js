@@ -25,7 +25,6 @@ const cartDB = new Map();
 const ordersDB = [];
 const pendingDepositDB = new Map();
 
-
 app.post('/callback', line.middleware(config), (req, res) => {
   Promise.all(req.body.events.map(handleEvent))
     .then((result) => res.json(result))
@@ -34,9 +33,15 @@ app.post('/callback', line.middleware(config), (req, res) => {
       res.status(500).end();
     });
 });
+
 async function handleEvent(event) {
+  if (!event || !event.source) {
+    return Promise.resolve(null);
+  }
+
+  const userId = event.source.userId;
+
   if (event.type === 'postback') {
-    const userId = event.source.userId;
     const params = new URLSearchParams(event.postback.data);
     const action = params.get('action');
 
@@ -44,7 +49,10 @@ async function handleEvent(event) {
       const itemId = params.get('item_id');
       const item = menuDB.find((m) => m.item_id === itemId && !m.is_sold_out);
       if (!item) {
-        return client.replyMessage(event.replyToken, { type: 'text', text: '不好意思，這道餐點剛售完囉！' });
+        return client.replyMessage(event.replyToken, {
+          type: 'text',
+          text: '不好意思，這道餐點暫時售完囉！',
+        });
       }
       if (item.need_drink_options) {
         return sendDrinkIceFlex(event.replyToken, item.item_id, item.name);
@@ -64,134 +72,141 @@ async function handleEvent(event) {
       const ice = params.get('ice');
       const sugar = params.get('sugar');
       const item = menuDB.find((m) => m.item_id === itemId);
+      if (!item) {
+        return client.replyMessage(event.replyToken, {
+          type: 'text',
+          text: '找不到這杯飲品，請重新點餐。',
+        });
+      }
       const options = ice + ' / ' + sugar;
       addToCart(userId, item, options);
-      return sendCartPromptFlex(event.replyToken, userId, '已加入「' + item.name + '（' + options + '）」');
+      return sendCartPromptFlex(event.replyToken, userId, '已加入「' + item.name + ' (' + options + ')」');
     }
 
     if (action === 'open_menu') {
       return sendCategoryCarouselFlex(event.replyToken);
     }
-      if (action === 'clear_cart') {
-    if (typeof userCarts !== 'undefined') userCarts[userId] = [];
-    if (typeof carts !== 'undefined') carts[userId] = [];
-    return client.replyMessage(event.replyToken, {
-      type: 'text',
-      text: '🗑️ 購物車已清空！想重新點餐請點下方「線上點餐」或輸入「我要點餐」。'
-    });
-  }
 
-  if (action === 'cancel_order') {
-    const cancelId = params.get('orderId') || '';
-    if (typeof userOrders !== 'undefined') delete userOrders[userId];
-    if (typeof orders !== 'undefined') delete orders[userId];
-    return client.replyMessage(event.replyToken, {
-      type: 'text',
-      text: '❌ 訂單 ' + cancelId + ' 已為您取消！若需重新點餐，請點選下方「線上點餐」。'
-    });
-  }
+    if (action === 'clear_cart') {
+      cartDB.delete(userId);
+      pendingDepositDB.delete(userId);
+      return client.replyMessage(event.replyToken, {
+        type: 'text',
+        text: '🗑️ 購物車已清空！想重新點餐請點下方「線上點餐」或輸入「我要點餐」。',
+      });
+    }
 
-
-    if (typeof userCarts !== 'undefined') userCarts[userId] = [];
-    if (typeof carts !== 'undefined') carts[userId] = [];
-    return client.replyMessage(event.replyToken, {
-      type: 'text',
-      text: '🗑️ 購物車已清空！想重新點餐請點下方「線上點餐」或輸入「我要點餐」。'
-    });
-  }
-
+    if (action === 'cancel_order') {
+      const cancelId = params.get('orderId') || '';
+      const idx = ordersDB.findIndex((o) => o.order_id === cancelId && o.user_id === userId);
+      if (idx !== -1) {
+        ordersDB.splice(idx, 1);
+      }
+      return client.replyMessage(event.replyToken, {
+        type: 'text',
+        text: '❌ 訂單 ' + cancelId + ' 已為您取消！若需重新點餐，請點選下方「線上點餐」。',
+      });
+    }
 
     if (action === 'checkout_time') {
+      const { list, totalAmount } = getCartSummary(userId);
+      if (!list.length || totalAmount <= 0) {
+        return client.replyMessage(event.replyToken, {
+          type: 'text',
+          text: '您的購物車目前是空的喔！請重新點選「我要點餐」選購餐點。',
+        });
+      }
       return sendPickupTimeFlex(event.replyToken, userId);
     }
 
     if (action === 'select_pickup') {
-      const pickupTime = params.get('time');
+      const pickupTime = params.get('time') || '15分鐘後';
       return handleDepositCheck(event, userId, pickupTime);
     }
 
     if (action === 'confirm_order') {
-      const pickupTime = params.get('time');
-      const paymentStatus = params.get('pay');
+      const pickupTime = params.get('time') || '15分鐘後';
+      const paymentStatus = params.get('pay') || '現場付';
       return finalizeOrder(event, userId, pickupTime, paymentStatus);
     }
-        if (action === 'ask_last5') {
-      const pickupTime = params.get('time');
-      const payLabel = params.get('label');
+
+    if (action === 'ask_last5') {
+      const pickupTime = params.get('time') || '15分鐘後';
+      const payLabel = params.get('label') || '全額付清';
       pendingDepositDB.set(userId, { pickupTime, payLabel });
       return client.replyMessage(event.replyToken, {
         type: 'text',
-        text:
-          '請直接輸入您的「轉帳帳號末五碼」（例如：12345），方便店家核對【' +
-          payLabel +
-          '】帳款。',
+        text: '請直接輸入您的「轉帳帳號末五碼」（例如：12345），方便店家核對【' + payLabel + '】帳款。',
       });
     }
 
-      
-    }
-
-
-
+    return Promise.resolve(null);
+  }
 
   if (event.type === 'message' && event.message.type === 'text') {
     const userText = event.message.text.trim();
-    const userId = event.source.userId;
-     if (pendingDepositDB.has(userId)) {
-    if (!/^\d{5}$/.test(userText)) {
-      return client.replyMessage(event.replyToken, {
-        type: 'text',
-        text: '請輸入 5 碼數字的「轉帳末五碼」(例如：12345)'
-      });
-    }
-    const { pickupTime, payLabel } = pendingDepositDB.get(userId);
-    pendingDepositDB.delete(userId);
-    return finalizeOrder(event, userId, pickupTime, payLabel + ' (末五碼：' + userText + ')');
- 
-     
-    }
-  if (userText === '查詢訂單') {
-    const myOrders = ordersDB.filter(o => o.user_id === userId);
-    if (myOrders.length === 0) {
-      return client.replyMessage(event.replyToken, {
-        type: 'text',
-        text: '您目前還沒有成立的訂單喔！想點餐請輸入「我要點餐」。'
-      });
-    }
-    const latest = myOrders[myOrders.length - 1];
-    const itemsText = latest.items.detail.map(item => {
-      const opt = item.options ? (' (' + item.options + ')') : '';
-      return '• ' + item.name + opt + ' x ' + item.qty + ' = $' + (item.price * item.qty);
-    }).join('\n');
 
-    return client.replyMessage(event.replyToken, {
-      type: 'flex',
-      altText: '📋 您的最新訂單',
-      contents: {
-        type: 'bubble',
-        body: {
-          type: 'box',
-          layout: 'vertical',
-          contents: [
-            { type: 'text', text: '📋 您最新一筆訂單', weight: 'bold', size: 'lg', color: '#1DB446' },
-            { type: 'text', text: '單號：' + latest.order_id, size: 'sm', margin: 'md', weight: 'bold' },
-            { type: 'text', text: '預計取餐：' + latest.pickup_time, size: 'sm', margin: 'xs' },
-            { type: 'text', text: '付款方式：' + latest.payment_status, size: 'sm', margin: 'xs' },
-            { type: 'separator', margin: 'md' },
-            { type: 'text', text: itemsText, size: 'sm', margin: 'md', wrap: true },
-            { type: 'text', text: '總金額：$' + latest.total_amount, weight: 'bold', size: 'md', margin: 'md' },
-            {
-              type: 'button',
-              style: 'secondary',
-              margin: 'lg',
-              height: 'sm',
-              action: { type: 'postback', label: '❌ 取消此筆訂單', data: 'action=cancel_order&orderId=' + latest.order_id }
-            }
-          ]
-        }
+    if (pendingDepositDB.has(userId)) {
+      if (!/^\d{5}$/.test(userText)) {
+        return client.replyMessage(event.replyToken, {
+          type: 'text',
+          text: '請輸入 5 碼數字的「轉帳末五碼」（例如：12345）。',
+        });
       }
-    });
-  }
+      const { pickupTime, payLabel } = pendingDepositDB.get(userId);
+      pendingDepositDB.delete(userId);
+      return finalizeOrder(event, userId, pickupTime, payLabel + '（末五碼：' + userText + '）');
+    }
+
+    if (userText === '查詢訂單') {
+      const myOrders = ordersDB.filter((o) => o.user_id === userId);
+      if (myOrders.length === 0) {
+        return client.replyMessage(event.replyToken, {
+          type: 'text',
+          text: '您目前還沒有成立的訂單喔！想點餐請輸入「我要點餐」。',
+        });
+      }
+      const latest = myOrders[myOrders.length - 1];
+      const itemsText = latest.items_detail
+        .map((item) => {
+          const opt = item.options ? ' (' + item.options + ')' : '';
+          return '・' + item.name + opt + ' x' + item.qty + ' = $' + item.price * item.qty;
+        })
+        .join('\n');
+
+      return client.replyMessage(event.replyToken, {
+        type: 'flex',
+        altText: '🧾 您的最新訂單',
+        contents: {
+          type: 'bubble',
+          body: {
+            type: 'box',
+            layout: 'vertical',
+            contents: [
+              { type: 'text', text: '🧾 您的最新訂單', weight: 'bold', size: 'lg', color: '#1DB446' },
+              { type: 'text', text: '單號：' + latest.order_id, size: 'sm', margin: 'md', weight: 'bold' },
+              { type: 'text', text: '預計取餐：' + latest.pickup_time, size: 'sm', margin: 'xs' },
+              { type: 'text', text: '付款方式：' + latest.payment_status, size: 'sm', margin: 'xs' },
+              { type: 'separator', margin: 'md' },
+              { type: 'text', text: itemsText, size: 'sm', margin: 'md', wrap: true },
+              { type: 'text', text: '總金額：$' + latest.total_amount, weight: 'bold', size: 'md', margin: 'md' },
+              {
+                type: 'button',
+                style: 'secondary',
+                margin: 'lg',
+                height: 'sm',
+                action: {
+                  type: 'postback',
+                  label: '❌ 取消此筆訂單',
+                  data: 'action=cancel_order&orderId=' + latest.order_id,
+                },
+              },
+            ],
+          },
+        },
+      });
+    }
+
     if (userText === '我要點餐') {
       return sendCategoryCarouselFlex(event.replyToken);
     }
@@ -203,7 +218,7 @@ async function handleEvent(event) {
         target.is_sold_out = true;
         return client.replyMessage(event.replyToken, {
           type: 'text',
-          text: '✅ 已將「' + target.name + '」標記為售完。',
+          text: '⛔ 已將「' + target.name + '」標記為售完。',
         });
       }
     }
@@ -222,7 +237,7 @@ async function handleEvent(event) {
   }
 
   return Promise.resolve(null);
-function addToCart(userId, item, options) {
+  function addToCart(userId, item, options) {
   const list = cartDB.get(userId) || [];
   const existing = list.find((c) => c.item_id === item.item_id && c.options === options);
   if (existing) {
@@ -244,12 +259,13 @@ function getCartSummary(userId) {
   const totalAmount = list.reduce((sum, item) => sum + item.price * item.qty, 0);
   const summaryText = list
     .map((item) => {
-      const opt = item.options ? '（' + item.options + '）' : '';
-      return '• ' + item.name + opt + ' x' + item.qty + ' = $' + item.price * item.qty;
+      const opt = item.options ? ' (' + item.options + ')' : '';
+      return '・' + item.name + opt + ' x' + item.qty + ' = $' + item.price * item.qty;
     })
     .join('\n');
   return { list, totalAmount, summaryText };
 }
+
 function sendCategoryCarouselFlex(replyToken) {
   const categories = ['主食便當區', '單點炸物區', '飲料湯品區'];
   const bubbles = categories.map((cat) => {
@@ -273,7 +289,7 @@ function sendCategoryCarouselFlex(replyToken) {
         type: 'box',
         layout: 'vertical',
         contents: [
-          { type: 'text', text: '🍱 ' + cat, weight: 'bold', size: 'lg', color: '#1DB446' },
+          { type: 'text', text: '🍽️ ' + cat, weight: 'bold', size: 'lg', color: '#1DB446' },
           { type: 'separator', margin: 'md' },
           ...buttons,
         ],
@@ -287,7 +303,20 @@ function sendCategoryCarouselFlex(replyToken) {
     contents: { type: 'carousel', contents: bubbles },
   });
 }
+
 function sendDrinkIceFlex(replyToken, itemId, itemName) {
+  const iceOptions = ['正常冰', '少冰', '去冰'].map((ice) => ({
+    type: 'button',
+    style: 'secondary',
+    margin: 'sm',
+    height: 'sm',
+    action: {
+      type: 'postback',
+      label: ice,
+      data: 'action=drink_ice&item_id=' + itemId + '&ice=' + encodeURIComponent(ice),
+    },
+  }));
+
   return client.replyMessage(replyToken, {
     type: 'flex',
     altText: '請選擇冰塊',
@@ -298,17 +327,7 @@ function sendDrinkIceFlex(replyToken, itemId, itemName) {
         layout: 'vertical',
         contents: [
           { type: 'text', text: '🥤 ' + itemName + ' - 請選冰塊', weight: 'bold', size: 'md' },
-          ...['正常冰', '少冰', '去冰'].map((ice) => ({
-            type: 'button',
-            style: 'secondary',
-            margin: 'sm',
-            height: 'sm',
-            action: {
-              type: 'postback',
-              label: ice,
-              data: 'action=drink_ice&item_id=' + itemId + '&ice=' + encodeURIComponent(ice),
-            },
-          })),
+          ...iceOptions,
         ],
       },
     },
@@ -316,6 +335,24 @@ function sendDrinkIceFlex(replyToken, itemId, itemName) {
 }
 
 function sendDrinkSugarFlex(replyToken, itemId, ice) {
+  const sugarOptions = ['全糖', '半糖', '無糖'].map((sugar) => ({
+    type: 'button',
+    style: 'secondary',
+    margin: 'sm',
+    height: 'sm',
+    action: {
+      type: 'postback',
+      label: sugar,
+      data:
+        'action=drink_sugar&item_id=' +
+        itemId +
+        '&ice=' +
+        encodeURIComponent(ice) +
+        '&sugar=' +
+        encodeURIComponent(sugar),
+    },
+  }));
+
   return client.replyMessage(replyToken, {
     type: 'flex',
     altText: '請選擇甜度',
@@ -326,28 +363,13 @@ function sendDrinkSugarFlex(replyToken, itemId, ice) {
         layout: 'vertical',
         contents: [
           { type: 'text', text: '甜度選擇（目前：' + ice + '）', weight: 'bold', size: 'md' },
-          ...['全糖', '半糖', '無糖'].map((sugar) => ({
-            type: 'button',
-            style: 'secondary',
-            margin: 'sm',
-            height: 'sm',
-            action: {
-              type: 'postback',
-              label: sugar,
-              data:
-                'action=drink_sugar&item_id=' +
-                itemId +
-                '&ice=' +
-                encodeURIComponent(ice) +
-                '&sugar=' +
-                encodeURIComponent(sugar),
-            },
-          })),
+          ...sugarOptions,
         ],
       },
     },
   });
 }
+
 function sendCartPromptFlex(replyToken, userId, headerMsg) {
   const { totalAmount, summaryText } = getCartSummary(userId);
   return client.replyMessage(replyToken, {
@@ -370,16 +392,13 @@ function sendCartPromptFlex(replyToken, userId, headerMsg) {
             action: { type: 'postback', label: '➕ 繼續加點', data: 'action=open_menu' },
           },
           {
-  "type": "button",
-  "style": "secondary",
-  "color": "#999999",
-  "action": {
-    "type": "postback",
-    "label": "🗑️ 清空購物車",
-    "data": "action=clear_cart"
-  }
-},
-
+            type: 'button',
+            style: 'secondary',
+            color: '#999999',
+            margin: 'sm',
+            height: 'sm',
+            action: { type: 'postback', label: '🗑️ 清空購物車', data: 'action=clear_cart' },
+          },
           {
             type: 'button',
             style: 'primary',
@@ -393,16 +412,31 @@ function sendCartPromptFlex(replyToken, userId, headerMsg) {
     },
   });
 }
-
 function sendPickupTimeFlex(replyToken, userId) {
   const { totalAmount, summaryText } = getCartSummary(userId);
-  if (!summaryText) {
-    return client.replyMessage(replyToken, { type: 'text', text: '您的購物車目前沒有餐點喔！' });
+  if (!summaryText || totalAmount <= 0) {
+    return client.replyMessage(replyToken, {
+      type: 'text',
+      text: '您的購物車目前沒有餐點喔！',
+    });
   }
+
+  const timeButtons = ['15分鐘後', '30分鐘後', '45分鐘後'].map((t) => ({
+    type: 'button',
+    style: 'primary',
+    color: '#1DB446',
+    margin: 'sm',
+    height: 'sm',
+    action: {
+      type: 'postback',
+      label: t,
+      data: 'action=select_pickup&time=' + encodeURIComponent(t),
+    },
+  }));
 
   return client.replyMessage(replyToken, {
     type: 'flex',
-    altText: '請選擇取餐時間',
+    altText: '請選擇預計取餐時間',
     contents: {
       type: 'bubble',
       body: {
@@ -411,26 +445,16 @@ function sendPickupTimeFlex(replyToken, userId) {
         contents: [
           { type: 'text', text: '⏰ 請選擇預計取餐時間', weight: 'bold', size: 'md' },
           { type: 'text', text: summaryText + '\n總金額：$' + totalAmount, size: 'sm', margin: 'md', wrap: true },
-          ...['15分鐘後', '30分鐘後', '45分鐘後'].map((t) => ({
-            type: 'button',
-            style: 'primary',
-            color: '#1DB446',
-            margin: 'sm',
-            height: 'sm',
-            action: {
-              type: 'postback',
-              label: t,
-              data: 'action=select_pickup&time=' + encodeURIComponent(t),
-            },
-          })),
+          ...timeButtons,
         ],
       },
     },
   });
 }
+
 async function handleDepositCheck(event, userId, pickupTime) {
   const { list, totalAmount } = getCartSummary(userId);
-  if (list.length === 0 || totalAmount <= 0) {
+  if (!list.length || totalAmount <= 0) {
     return client.replyMessage(event.replyToken, {
       type: 'text',
       text: '您的購物車目前是空的喔！請重新點選「我要點餐」選購餐點。',
@@ -444,24 +468,24 @@ async function handleDepositCheck(event, userId, pickupTime) {
 
     return client.replyMessage(event.replyToken, {
       type: 'flex',
-      altText: '滿 500 元請選擇銀行轉帳方式',
+      altText: '滿 500 元請選擇匯款方式',
       contents: {
         type: 'bubble',
         body: {
           type: 'box',
           layout: 'vertical',
           contents: [
-            { type: 'text', text: '💳 銀行轉帳付款', weight: 'bold', size: 'lg', color: '#E63946' },
+            { type: 'text', text: '🏦 銀行轉帳付款', weight: 'bold', size: 'lg', color: '#E63946' },
             {
               type: 'text',
               text:
                 '訂單總額：$' +
                 totalAmount +
-                '（滿 $500 需先轉帳）\n・訂金收一半：$' +
+                '\n（滿 $500 需先轉帳）\n・訂金收一半：$' +
                 deposit +
                 '\n・全部一次付清：$' +
                 totalAmount +
-                '\n\n🏦 銀行代號：807（永豐）\n帳號：請填入老闆帳號',
+                '\n\n銀行代號：807 (永豐)\n帳號：請填入老闆帳號',
               size: 'sm',
               margin: 'md',
               wrap: true,
@@ -473,7 +497,7 @@ async function handleDepositCheck(event, userId, pickupTime) {
               margin: 'md',
               action: {
                 type: 'postback',
-                label: '💰 訂金付一半 $' + deposit,
+                label: '💳 訂金付一半 $' + deposit,
                 data:
                   'action=ask_last5&time=' +
                   encodeURIComponent(pickupTime) +
@@ -488,7 +512,7 @@ async function handleDepositCheck(event, userId, pickupTime) {
               margin: 'sm',
               action: {
                 type: 'postback',
-                label: '✅ 全部付清 $' + totalAmount,
+                label: '💳 全部付清 $' + totalAmount,
                 data:
                   'action=ask_last5&time=' +
                   encodeURIComponent(pickupTime) +
@@ -500,17 +524,26 @@ async function handleDepositCheck(event, userId, pickupTime) {
         },
       },
     });
-  }  
+  }
 
   return finalizeOrder(event, userId, pickupTime, '現場付');
 }
 
 async function finalizeOrder(event, userId, pickupTime, paymentStatus) {
   const { list, totalAmount, summaryText } = getCartSummary(userId);
+  if (!list.length || totalAmount <= 0) {
+    return client.replyMessage(event.replyToken, {
+      type: 'text',
+      text: '您的購物車目前是空的喔！請重新點選「我要點餐」選購餐點。',
+    });
+  }
+
   let userName = 'LINE 顧客';
   try {
     const profile = await client.getProfile(userId);
-    userName = profile.displayName;
+    if (profile && profile.displayName) {
+      userName = profile.displayName;
+    }
   } catch (_) {}
 
   const now = new Date();
@@ -532,13 +565,14 @@ async function finalizeOrder(event, userId, pickupTime, paymentStatus) {
     total_amount: totalAmount,
     payment_status: paymentStatus,
   });
+
   cartDB.delete(userId);
 
   if (OWNER_USER_ID) {
     await client.pushMessage(OWNER_USER_ID, {
       type: 'text',
       text:
-        '🔔 新訂單 ' +
+        '📣 新訂單！' +
         orderId +
         '\n顧客：' +
         userName +
@@ -553,7 +587,7 @@ async function finalizeOrder(event, userId, pickupTime, paymentStatus) {
     });
   }
 
-    return client.replyMessage(event.replyToken, {
+  return client.replyMessage(event.replyToken, {
     type: 'flex',
     altText: '🎉 訂單成立通知',
     contents: {
@@ -574,15 +608,20 @@ async function finalizeOrder(event, userId, pickupTime, paymentStatus) {
             style: 'secondary',
             margin: 'lg',
             height: 'sm',
-            action: { type: 'postback', label: '❌ 取消此筆訂單', data: 'action=cancel_order&orderId=' + orderId }
-          }
-        ]
-      }
-    }
+            action: {
+              type: 'postback',
+              label: '❌ 取消此筆訂單',
+              data: 'action=cancel_order&orderId=' + orderId,
+            },
+          },
+        ],
+      },
+    },
   });
 }
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
   console.log('Server is running on port ' + port);
-});
+});  
+}
