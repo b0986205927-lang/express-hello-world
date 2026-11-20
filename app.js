@@ -147,7 +147,7 @@ app.post('/callback', line.middleware(config), (req, res) => {
 
     return Promise.resolve(null);
   }
-     if (event.type === 'message' && event.message.type === 'text') {
+   if (event.type === 'message' && event.message.type === 'text') {
     const userText = event.message.text.trim();
 
     if (pendingDepositDB.has(userId)) {
@@ -271,7 +271,7 @@ function getCartSummary(userId) {
     .join('\n');
   return { list, totalAmount, summaryText };
 }
-  function sendCategoryCarouselFlex(replyToken) {
+function sendCategoryCarouselFlex(replyToken) {
   const categories = ['主食便當區', '單點炸物區', '飲料湯品區'];
   const bubbles = categories.map((cat) => {
     const items = menuDB.filter((m) => m.category === cat && !m.is_sold_out);
@@ -416,8 +416,8 @@ function sendCartPromptFlex(replyToken, userId, headerMsg) {
       },
     },
   });
-}
- function sendPickupTimeFlex(replyToken, userId) {
+}  
+function sendPickupTimeFlex(replyToken, userId) {
   const { totalAmount, summaryText } = getCartSummary(userId);
   if (!summaryText || totalAmount <= 0) {
     return client.replyMessage(replyToken, {
@@ -629,4 +629,5 @@ async function finalizeOrder(event, userId, pickupTime, paymentStatus) {
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
   console.log('Server is running on port ' + port);
-}); 
+});  
+});
