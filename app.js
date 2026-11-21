@@ -275,8 +275,8 @@ function sendTransferOptionsFlex(replyToken, pickupTime, totalAmount, method, is
       ? LINEPAY_PERSONAL_INFO
       : `${BANK_INFO}\n${TWQR_INFO}`;
 
-  const amountText = isOver500
-    ? • 訂金一半：$${deposit}\n• 全部一次付清：$${totalAmount}
+    const amountText = isOver500
+    ? `• 訂金一半：$${deposit}\n• 全部一次付清：$${totalAmount}`
     : `• 應付金額：$${totalAmount}`;
 
   const buttons = isOver500
