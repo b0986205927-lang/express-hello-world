@@ -49,7 +49,8 @@ function getCartSummary(userId) {
   const lines = list.map((item) => {
     const subtotal = item.price * item.qty;
     totalAmount += subtotal;
-    const optText = item.options ? （${item.options}） : '';
+        const optText = item.options ? `（${item.options}）` : '';
+
     return `• ${item.name}${optText} x${item.qty} = $${subtotal}`;
   });
   return {
