@@ -7,9 +7,10 @@ const config = {
 };
 
 const OWNER_USER_ID = process.env.OWNER_USER_ID || '';
-const BANK_INFO = '銀行代號：807（永豐）\n帳號：請填入老闆帳號';
-const TWQR_INFO = 'TWQR 掃碼／行動銀行轉帳：請填入 TWQR 帳號或收款說明';
-const LINEPAY_PERSONAL_INFO = 'LINE Pay 個人轉帳：請填入您的 LINE ID 或收款連結／說明';
+const BANK_INFO = '銀行代號：807（永豐）\n帳號：159—018—00016117';
+const TWQR_INFO = 'TWQR 掃碼／行動銀行轉帳：同上方帳號(或掃描店面 TWQR 立牌)';
+const LINEPAY_PERSONAL_INFO = 'LINE Pay 個人轉帳：即將開放，目前請先使用上方銀行轉帳 / TWQR';
+
 
 const client = new line.Client(config);
 const app = express();
